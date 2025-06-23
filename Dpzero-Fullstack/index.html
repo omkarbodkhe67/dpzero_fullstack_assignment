@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedback System</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useContext, createContext } = React;
+        
+        // Context for authentication
+        const AuthContext = createContext();
+        
+        // API configuration
+        const API_BASE_URL = 'http://localhost:5000/api';
+        
+        // Axios instance with auth
+        const api = axios.create({
+            baseURL: API_BASE_URL,
+        });
+        
+        // Add a request interceptor for debugging
+        api.interceptors.request.use((config) => {
+            console.log('[DEBUG] Sending request to', config.url, 'with Authorization:', config.headers.Authorization);
+            return config;
+        });
+        
+        // Auth provider component
+        const AuthProvider = ({ children }) => {
+            const [user, setUser] = useState(null);
+            const [loading, setLoading] = useState(true);
+            
+            useEffect(() => {
+                const token = localStorage.getItem('token');
+                console.log('[DEBUG] useEffect: token in localStorage:', token);
+                if (token) {
+                    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+                    console.log('[DEBUG] useEffect: Set Authorization header:', api.defaults.headers.common['Authorization']);
+                    fetchCurrentUser();
+                } else {
+                    setLoading(false);
+                }
+            }, []);
+            
+            const fetchCurrentUser = async () => {
+                try {
+                    const response = await api.get('/users/me');
+                    setUser(response.data);
+                } catch (error) {
+                    localStorage.removeItem('token');
+                    delete api.defaults.headers.common['Authorization'];
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            const login = async (email, password) => {
+                const response = await api.post('/auth/login', { email, password });
+                const { access_token, user: userData } = response.data;
+                
+                localStorage.setItem('token', access_token);
+                api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
+                console.log('[DEBUG] login: Set token in localStorage:', access_token);
+                console.log('[DEBUG] login: Set Authorization header:', api.defaults.headers.common['Authorization']);
+                setUser(userData);
+                
+                return userData;
+            };
+            
+            const logout = () => {
+                localStorage.removeItem('token');
+                delete api.defaults.headers.common['Authorization'];
+                setUser(null);
+            };
+            
+            return (
+                <AuthContext.Provider value={{ user, login, logout, loading }}>
+                    {children}
+                </AuthContext.Provider>
+            );
+        };
+        
+        const useAuth = () => {
+            const context = useContext(AuthContext);
+            if (!context) {
+                throw new Error('useAuth must be used within AuthProvider');
+            }
+            return context;
+        };
+        
+        // Login component
+        const LoginForm = () => {
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+            const [loading, setLoading] = useState(false);
+            const { login } = useAuth();
+            
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setError('');
+                
+                try {
+                    await login(email, password);
+                } catch (error) {
+                    setError(error.response?.data?.error || 'Login failed');
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                    <div className="max-w-md w-full space-y-8">
+                        <div>
+                            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                                Sign in to Feedback System
+                            </h2>
+                        </div>
+                        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+                            <div className="rounded-md shadow-sm -space-y-px">
+                                <div>
+                                    <input
+                                        type="email"
+                                        required
+                                        className="relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                        placeholder="Email address"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <input
+                                        type="password"
+                                        required
+                                        className="relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                        placeholder="Password"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            
+                            {error && (
+                                <div className="text-red-600 text-sm text-center">{error}</div>
+                            )}
+                            
+                            <div>
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                                >
+                                    {loading ? 'Signing in...' : 'Sign in'}
+                                </button>
+                            </div>
+                            
+                            <div className="text-sm text-center text-gray-600">
+                                <p>Demo Credentials:</p>
+                                <p>Manager: manager@company.com / password123</p>
+                                <p>Employee: alice@company.com / password123</p>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+        
+        // Header component
+        const Header = () => {
+            const { user, logout } = useAuth();
+            
+            return (
+                <header className="bg-white shadow">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="flex justify-between h-16">
+                            <div className="flex items-center">
+                                <h1 className="text-xl font-semibold">Feedback System</h1>
+                            </div>
+                            <div className="flex items-center space-x-4">
+                                <span className="text-sm text-gray-700">
+                                    Welcome, {user?.name} ({user?.role})
+                                </span>
+                                <button
+                                    onClick={logout}
+                                    className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+                                >
+                                    Logout
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </header>
+            );
+        };
+        
+        // Manager Dashboard
+        const ManagerDashboard = () => {
+            const [dashboardData, setDashboardData] = useState(null);
+            const [teamMembers, setTeamMembers] = useState([]);
+            const [feedback, setFeedback] = useState([]);
+            const [showCreateForm, setShowCreateForm] = useState(false);
+            const [selectedEmployee, setSelectedEmployee] = useState('');
+            const [strengths, setStrengths] = useState('');
+            const [areasToImprove, setAreasToImprove] = useState('');
+            const [sentiment, setSentiment] = useState('positive');
+            const [editingFeedback, setEditingFeedback] = useState(null);
+            
+            useEffect(() => {
+                fetchDashboardData();
+                fetchTeamMembers();
+                fetchFeedback();
+            }, []);
+            
+            const fetchDashboardData = async () => {
+                try {
+                    const response = await api.get('/dashboard/manager');
+                    setDashboardData(response.data);
+                } catch (error) {
+                    console.error('Error fetching dashboard data:', error);
+                }
+            };
+            
+            const fetchTeamMembers = async () => {
+                try {
+                    const response = await api.get('/team');
+                    setTeamMembers(response.data);
+                } catch (error) {
+                    console.error('Error fetching team members:', error);
+                }
+            };
+            
+            const fetchFeedback = async () => {
+                try {
+                    const response = await api.get('/feedback/manager');
+                    setFeedback(response.data);
+                } catch (error) {
+                    console.error('Error fetching feedback:', error);
+                }
+            };
+            
+            const handleCreateFeedback = async (e) => {
+                e.preventDefault();
+                try {
+                    await api.post('/feedback', {
+                        employee_id: selectedEmployee,
+                        strengths,
+                        areas_to_improve: areasToImprove,
+                        sentiment
+                    });
+                    
+                    setShowCreateForm(false);
+                    setSelectedEmployee('');
+                    setStrengths('');
+                    setAreasToImprove('');
+                    setSentiment('positive');
+                    fetchFeedback();
+                    fetchDashboardData();
+                } catch (error) {
+                    console.error('Error creating feedback:', error);
+                }
+            };
+            
+            const handleEditFeedback = (feedbackItem) => {
+                setEditingFeedback(feedbackItem);
+                setStrengths(feedbackItem.strengths);
+                setAreasToImprove(feedbackItem.areas_to_improve);
+                setSentiment(feedbackItem.sentiment);
+            };
+            
+            const handleUpdateFeedback = async (e) => {
+                e.preventDefault();
+                try {
+                    await api.put(`/feedback/${editingFeedback.id}`, {
+                        strengths,
+                        areas_to_improve: areasToImprove,
+                        sentiment
+                    });
+                    
+                    setEditingFeedback(null);
+                    setStrengths('');
+                    setAreasToImprove('');
+                    setSentiment('positive');
+                    fetchFeedback();
+                } catch (error) {
+                    console.error('Error updating feedback:', error);
+                }
+            };
+            
+            const getSentimentColor = (sentiment) => {
+                switch (sentiment) {
+                    case 'positive': return 'text-green-600 bg-green-100';
+                    case 'negative': return 'text-red-600 bg-red-100';
+                    default: return 'text-yellow-600 bg-yellow-100';
+                }
+            };
+            
+            return (
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                    {/* Dashboard Stats */}
+                    {dashboardData && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                            <div className="bg-white p-6 rounded-lg shadow">
+                                <h3 className="text-lg font-semibold text-gray-900">Team Members</h3>
+                                <p className="text-3xl font-bold text-indigo-600">{dashboardData.team_count}</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-lg shadow">
+                                <h3 className="text-lg font-semibold text-gray-900">Total Feedback</h3>
+                                <p className="text-3xl font-bold text-indigo-600">{dashboardData.total_feedback}</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-lg shadow">
+                                <h3 className="text-lg font-semibold text-gray-900">Sentiment Breakdown</h3>
+                                <div className="mt-2">
+                                    <span className="text-green-600">Positive: {dashboardData.sentiment_breakdown.positive || 0}</span><br/>
+                                    <span className="text-yellow-600">Neutral: {dashboardData.sentiment_breakdown.neutral || 0}</span><br/>
+                                    <span className="text-red-600">Negative: {dashboardData.sentiment_breakdown.negative || 0}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Create Feedback Button */}
+                    <div className="mb-6">
+                        <button
+                            onClick={() => setShowCreateForm(true)}
+                            className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
+                        >
+                            <i className="fas fa-plus mr-2"></i>
+                            Create Feedback
+                        </button>
+                    </div>
+                    
+                    {/* Create/Edit Feedback Modal */}
+                    {(showCreateForm || editingFeedback) && (
+                        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+                            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+                                <h3 className="text-lg font-bold text-gray-900 mb-4">
+                                    {editingFeedback ? 'Edit Feedback' : 'Create New Feedback'}
+                                </h3>
+                                <form onSubmit={editingFeedback ? handleUpdateFeedback : handleCreateFeedback}>
+                                    {!editingFeedback && (
+                                        <div className="mb-4">
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Employee
+                                            </label>
+                                            <select
+                                                value={selectedEmployee}
+                                                onChange={(e) => setSelectedEmployee(e.target.value)}
+                                                required
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                            >
+                                                <option value="">Select Employee</option>
+                                                {teamMembers.map(member => (
+                                                    <option key={member.id} value={member.id}>
+                                                        {member.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                    
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Strengths
+                                        </label>
+                                        <textarea
+                                            value={strengths}
+                                            onChange={(e) => setStrengths(e.target.value)}
+                                            required
+                                            rows="3"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                        />
+                                    </div>
+                                    
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Areas to Improve
+                                        </label>
+                                        <textarea
+                                            value={areasToImprove}
+                                            onChange={(e) => setAreasToImprove(e.target.value)}
+                                            required
+                                            rows="3"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                        />
+                                    </div>
+                                    
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Overall Sentiment
+                                        </label>
+                                        <select
+                                            value={sentiment}
+                                            onChange={(e) => setSentiment(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                        >
+                                            <option value="positive">Positive</option>
+                                            <option value="neutral">Neutral</option>
+                                            <option value="negative">Negative</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div className="flex justify-end space-x-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowCreateForm(false);
+                                                setEditingFeedback(null);
+                                                setStrengths('');
+                                                setAreasToImprove('');
+                                                setSentiment('positive');
+                                            }}
+                                            className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                                        >
+                                            {editingFeedback ? 'Update' : 'Create'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Feedback List */}
+                    <div className="bg-white shadow rounded-lg">
+                        <div className="px-6 py-4 border-b border-gray-200">
+                            <h2 className="text-lg font-semibold text-gray-900">Team Feedback</h2>
+                        </div>
+                        <div className="divide-y divide-gray-200">
+                            {feedback.map((item) => (
+                                <div key={item.id} className="p-6">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h3 className="text-lg font-medium text-gray-900">
+                                                {item.employee_name}
+                                            </h3>
+                                            <p className="text-sm text-gray-500">
+                                                {new Date(item.created_at).toLocaleDateString()}
+                                                {item.updated_at !== item.created_at && ' (Updated)'}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getSentimentColor(item.sentiment)}`}>
+                                                {item.sentiment}
+                                            </span>
+                                            <button
+                                                onClick={() => handleEditFeedback(item)}
+                                                className="text-indigo-600 hover:text-indigo-900"
+                                            >
+                                                <i className="fas fa-edit"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <h4 className="font-medium text-green-700 mb-2">Strengths</h4>
+                                            <p className="text-gray-700 text-sm">{item.strengths}</p>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-medium text-orange-700 mb-2">Areas to Improve</h4>
+                                            <p className="text-gray-700 text-sm">{item.areas_to_improve}</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="mt-4 flex items-center">
+                                        <span className={`text-xs ${item.acknowledged ? 'text-green-600' : 'text-gray-500'}`}>
+                                            <i className={`fas ${item.acknowledged ? 'fa-check-circle' : 'fa-clock'} mr-1`}></i>
+                                            {item.acknowledged ? 'Acknowledged by employee' : 'Pending acknowledgment'}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                            
+                            {feedback.length === 0 && (
+                                <div className="p-6 text-center text-gray-500">
+                                    No feedback created yet. Click "Create Feedback" to get started.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        // Employee Dashboard
+        const EmployeeDashboard = () => {
+            const [dashboardData, setDashboardData] = useState(null);
+            const [feedback, setFeedback] = useState([]);
+            
+            useEffect(() => {
+                fetchDashboardData();
+                fetchFeedback();
+            }, []);
+            
+            const fetchDashboardData = async () => {
+                try {
+                    const response = await api.get('/dashboard/employee');
+                    setDashboardData(response.data);
+                } catch (error) {
+                    console.error('Error fetching dashboard data:', error);
+                }
+            };
+            
+            const fetchFeedback = async () => {
+                try {
+                    const response = await api.get('/feedback/employee');
+                    setFeedback(response.data);
+                } catch (error) {
+                    console.error('Error fetching feedback:', error);
+                }
+            };
+            
+            const handleAcknowledge = async (feedbackId) => {
+                try {
+                    await api.post(`/feedback/${feedbackId}/acknowledge`);
+                    fetchFeedback();
+                    fetchDashboardData();
+                } catch (error) {
+                    console.error('Error acknowledging feedback:', error);
+                }
+            };
+            
+            const getSentimentColor = (sentiment) => {
+                switch (sentiment) {
+                    case 'positive': return 'text-green-600 bg-green-100';
+                    case 'negative': return 'text-red-600 bg-red-100';
+                    default: return 'text-yellow-600 bg-yellow-100';
+                }
+            };
+            
+            return (
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                    {/* Dashboard Stats */}
+                    {dashboardData && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                            <div className="bg-white p-6 rounded-lg shadow">
+                                <h3 className="text-lg font-semibold text-gray-900">Total Feedback</h3>
+                                <p className="text-3xl font-bold text-indigo-600">{dashboardData.total_feedback}</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-lg shadow">
+                                <h3 className="text-lg font-semibold text-gray-900">Acknowledged</h3>
+                                <p className="text-3xl font-bold text-green-600">{dashboardData.acknowledged_feedback}</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-lg shadow">
+                                <h3 className="text-lg font-semibold text-gray-900">Pending</h3>
+                                <p className="text-3xl font-bold text-orange-600">{dashboardData.pending_feedback}</p>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Feedback Timeline */}
+                    <div className="bg-white shadow rounded-lg">
+                        <div className="px-6 py-4 border-b border-gray-200">
+                            <h2 className="text-lg font-semibold text-gray-900">Your Feedback Timeline</h2>
+                        </div>
+                        <div className="divide-y divide-gray-200">
+                            {feedback.map((item) => (
+                                <div key={item.id} className="p-6">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h3 className="text-lg font-medium text-gray-900">
+                                                From: {item.manager_name}
+                                            </h3>
+                                            <p className="text-sm text-gray-500">
+                                                {new Date(item.created_at).toLocaleDateString()}
+                                                {item.updated_at !== item.created_at && ' (Updated)'}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getSentimentColor(item.sentiment)}`}>
+                                                {item.sentiment}
+                                            </span>
+                                            {!item.acknowledged && (
+                                                <button
+                                                    onClick={() => handleAcknowledge(item.id)}
+                                                    className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700"
+                                                >
+                                                    Acknowledge
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <h4 className="font-medium text-green-700 mb-2">
+                                                <i className="fas fa-thumbs-up mr-1"></i>
+                                                Strengths
+                                            </h4>
+                                            <p className="text-gray-700 text-sm bg-green-50 p-3 rounded">{item.strengths}</p>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-medium text-orange-700 mb-2">
+                                                <i className="fas fa-arrow-up mr-1"></i>
+                                                Areas to Improve
+                                            </h4>
+                                            <p className="text-gray-700 text-sm bg-orange-50 p-3 rounded">{item.areas_to_improve}</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="mt-4">
+                                        <span className={`text-xs ${item.acknowledged ? 'text-green-600' : 'text-orange-600'}`}>
+                                            <i className={`fas ${item.acknowledged ? 'fa-check-circle' : 'fa-exclamation-circle'} mr-1`}></i>
+                                            {item.acknowledged ? 'You have acknowledged this feedback' : 'Please acknowledge this feedback'}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                            
+                            {feedback.length === 0 && (
+                                <div className="p-6 text-center text-gray-500">
+                                    <i className="fas fa-inbox text-4xl mb-4"></i>
+                                    <p>No feedback received yet.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        // Main App component
+        const App = () => {
+            const { user, loading } = useAuth();
+            
+            if (loading) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600"></div>
+                    </div>
+                );
+            }
+            
+            if (!user) {
+                return <LoginForm />;
+            }
+            
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    <Header />
+                    {user.role === 'manager' ? <ManagerDashboard /> : <EmployeeDashboard />}
+                </div>
+            );
+        };
+        
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <AuthProvider>
+                <App />
+            </AuthProvider>
+        );
+    </script>
+</body>
+</html>

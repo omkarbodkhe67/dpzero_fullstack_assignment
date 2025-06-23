@@ -1,0 +1,25 @@
+{
+  "name": "feedback-system-frontend",
+  "version": "1.0.0",
+  "description": "React frontend for feedback system",
+  "main": "index.html",
+  "scripts": {
+    "start": "python -m http.server 3000",
+    "build": "echo 'No build step required for this HTML/JS setup'",
+    "dev": "python -m http.server 3000"
+  },
+  "dependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {},
+  "keywords": [
+    "react",
+    "feedback",
+    "management",
+    "flask"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
